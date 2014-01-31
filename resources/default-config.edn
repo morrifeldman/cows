@@ -1,6 +1,8 @@
 {:log-weather? true
  :read-log-interval 5000    ;ms
  :serve-weather? true
+ :preferred-units #{:fahrenheit :hectopascal}
+ :number-format "%.2f"
  :device-cfg
  [{:name :bmp085
    :active true
@@ -8,13 +10,11 @@
    :address 0x77
    :oss 1
    :altitude 67.480                     ; meters
-   :pressure-units :hPa
-   :temperature-units :fahrenheit}
+   }
   {:name :sht21
    :active true
    :i2c-bus 1
-   :address 0x40
-   :temperature-units :fahrenheit}
+   :address 0x40}
   ;; see morri.cows.devices.mcp3008/channel-cfg for ad-channel definitions
   {:name :mcp3008
    :active true

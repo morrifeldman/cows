@@ -13,7 +13,8 @@
    [clojure.tools.namespace.repl :refer (refresh refresh-all)]
    [morri.cows :as cows]
    [morri.cows.system :as system]
-   [morri.cows.devices.bmp085 :as bmp085]))
+   [morri.cows.devices.bmp085 :as bmp085]
+   [clojurewerkz.machine-head.client :as mh]))
 
 (def system-state
   "A Var containing an object representing the application under
@@ -26,12 +27,12 @@
   []
   (alter-var-root
    #'system-state
-   (constantly (system/system system/default-config))))
+   (constantly (system/create-system system/default-config))))
 
 (defn start
   "Starts the system running, updates the Var #'system-state."
   []
-  (alter-var-root #'system-state system/start))
+  (alter-var-root #'system-state system/start-system))
 
 (defn stop
   "Stops the system if it is currently running, updates the Var
@@ -39,7 +40,7 @@
   []
   (alter-var-root
    #'system-state
-   (fn [s] (when s (system/stop s)))))
+   (fn [s] (when s (system/stop-system s)))))
 
 (defn go
   "Initializes and starts the system running."

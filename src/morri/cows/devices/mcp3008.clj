@@ -1,7 +1,11 @@
 (ns morri.cows.devices.mcp3008
-  (:require [clojure.java.io :as io])
+  (:require [clojure.java.io :as io]
+            [morri.cows.binary-utils :as bin])
   (:import (com.pi4j.wiringpi Spi))
   (:import (java.nio ByteBuffer)))
+
+;; This is an AD converter so several items can be connected to it.
+;; Currently only the ga1a12s202 is supported
 
 (defn start-spi [channel speed]
   {:post [(not (= % -1))]}
@@ -37,12 +41,6 @@
    :ch6-ch7 0x60
    :ch7-ch6 0x70})
 
-(defn byte->ubyte [b]
-  (bit-and 0xff b))
-
-(defn msb+lsb [msb lsb]
-  (bit-or (bit-shift-left msb 8) lsb))
-
 ;; First Byte is "00000001" =  1
 ;; Second Byte is "10000000" = -128,  for Single ended Ch0
 ;; Third Byte doesn't matter
@@ -62,8 +60,8 @@
     (aset-byte ba 2 0)
     (Spi/wiringPiSPIDataRW spi-channel ba 3)
     (let [msb (bit-and 0x03 (aget ba 1)) ; Only keep the last two bits
-          lsb (byte->ubyte (aget ba 2))] ; Read as unsigned
-      (msb+lsb msb lsb))))
+          lsb (bin/byte->ubyte (aget ba 2))] ; Read as unsigned
+      (bin/msb+lsb msb lsb))))
 
 (defn read-ra1a12s202 [spi-channel ad-channel]
   (let [raw-range 1023
@@ -76,10 +74,9 @@
   (for [[chan-key {:keys [name] :as chan-cfg}] ad-channels]
     (case name
       :ga1a12s202
-      {:content :ga1a12s202-light-level
-       :units :lux
-       :value (read-ra1a12s202 spi-channel chan-key)
-       :time (System/currentTimeMillis)})))
+      {:id :ga1a12s202-light-level
+       :current_value (read-ra1a12s202 spi-channel chan-key)
+       :units :lux})))
 
 ;; (init test-cfg)
 ;; (read-device (init test-cfg))
