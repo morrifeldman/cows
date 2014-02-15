@@ -1,37 +1,10 @@
 # morri/cows
-
-TODO: Brief description
-
-
-
-## Releases and Dependency Information
-
-* Releases are published to TODO_LINK
-
-* Latest stable release is TODO_LINK
-
-* All released versions TODO_LINK
-
-[Leiningen] dependency information:
-
-    [morri/cows "0.1.0-SNAPSHOT"]
-
-[Maven] dependency information:
-
-    <dependency>
-      <groupId>morri</groupId>
-      <artifactId>cows</artifactId>
-      <version>0.1.0-SNAPSHOT</version>
-    </dependency>
-
-[Leiningen]: http://leiningen.org/
-[Maven]: http://maven.apache.org/
-
-
+### What are the cows doing?
+Raspberry pi weather station written in clojure.
 
 ## Usage
 
-TODO
+1. Install leiningen and java on the pi
 
 
 

@@ -13,7 +13,7 @@
    [clojure.tools.namespace.repl :refer (refresh refresh-all)]
    [morri.cows :as cows]
    [morri.cows.system :as system]
-   [morri.cows.devices.bmp085 :as bmp085]
+   [morri.cows.devices [bmp085 mcp3008 sht21]]
    [clojurewerkz.machine-head.client :as mh]))
 
 (def system-state

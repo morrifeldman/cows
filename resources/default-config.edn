@@ -1,6 +1,8 @@
 {:log-weather? true
+ :feed-id 2070333582
  :read-log-interval 5000    ;ms
  :serve-weather? true
+ :jetty-port 80
  :preferred-units #{:fahrenheit :hectopascal}
  :number-format "%.2f"
  :device-cfg
@@ -9,15 +11,16 @@
    :i2c-bus 1   ; 0 for rev. 1 RasPi board, 1 for rev. 2 RasPi board.
    :address 0x77
    :oss 1
-   :altitude 67.480                     ; meters
-   }
+   :altitude 67.480}                    ; meters
   {:name :sht21
    :active true
    :i2c-bus 1
    :address 0x40}
-  ;; see morri.cows.devices.mcp3008/channel-cfg for ad-channel definitions
   {:name :mcp3008
    :active true
    :spi-channel 0
    :speed 500000
-   :ad-channels {:ch0 {:name :ga1a12s202}}}]}
+   :ad-channels {:ch0 {:name :ga1a12s202}}}]}   ;; see
+                                                ;; morri.cows.devices.mcp3008/channel-cfg
+                                                ;; for ad-channel
+                                                ;; definitions

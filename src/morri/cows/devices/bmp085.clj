@@ -1,8 +1,8 @@
 (ns morri.cows.devices.bmp085
   (:require [clojure.math.numeric-tower :as math]
             [morri.cows.devices.i2c :as i2c]
-            [morri.cows.conversions :as conv]
-            [morri.cows.binary-utils :as bin])
+            [morri.cows.binary-utils :as bin]
+            [morri.cows.system :as system])
   (:import (java.nio ByteBuffer)))
 
 (defn next-short!
@@ -49,23 +49,20 @@
                                   :ushort (next-ushort! bb))]]
             [param param-val]))))
 
-(defn init [{:keys [i2c-bus address] :as cfg}]
+(defmethod system/init-device :bmp085
+  [{:keys [i2c-bus address] :as cfg}]
   (let [bmp085 (i2c/connect-i2c i2c-bus address)
         bmp085-cal (read-bmp085-cal bmp085)]
     (assoc cfg :bmp085 bmp085 :cal bmp085-cal)))
-
-(defn read-short [device address]
-  (let [bb (read-into-byte-buffer device address 2)]
-    (next-short! bb)))
-
-(defn read-ushort [device address]
-  (bin/short->ushort (read-short device address)))
 
 ;; read uncompesated temp.
 (defn read-ut [bmp085]
   (do (.write bmp085 0xF4 0x2E)
       (Thread/sleep 5)
-      (read-ushort bmp085 0xF6)))
+      (bin/short->ushort
+       (bin/msb+lsb
+        (.read bmp085 0xF6)
+        (.read bmp085 0xF7)))))
 
 ;; see the BMP085 datasheet for the temperature and pressure calibration formulas
 ;; divide by 2^n is the same as bit shift right by n
@@ -79,7 +76,7 @@
   (let [{:keys [ac6 ac5 mc md]} cal
         x1 (bit-shift-right (* (- ut ac6) ac5) 15)
         x2 (/ (bit-shift-left mc 11) (+ x1 md))
-        b5 (int (+ x1 x2))]
+        b5 (+ x1 x2)]
     b5))
 
 (defn cal-temp
@@ -87,8 +84,9 @@
   and the uncalibrated temp ut"
   [cal ut]
   (let [b5 (compute-b5 cal ut)
-        t (bit-shift-right (+ b5 8) 4)]
-    (/ t 10.0)))
+        ;; t (bit-shift-right (+ b5 8) 4)
+        t (/ (+ b5 8) (Math/pow 2 4))]
+    (/ t 10.0))) ; Switched to floating point to get better temp resolution
 
 ;; Read the pressure:
 ;; write 0x34+(oss<<6) into reg 0xF4 and wait ms-sleep-time
@@ -122,7 +120,7 @@
   oss, uncalibrated temperature ut and uncalibrated pressure up"
   [cal oss ut up]
   (let [{:keys [b5 b2 ac2 ac1 ac3 b1 ac4]} cal
-        b5 (compute-b5 cal ut)
+        b5 (int (compute-b5 cal ut)) ;if it isn't int we can't bitshift
         b6 (- b5 4000)
         x1 (bit-shift-right (* b2 (bit-shift-right (sq b6) 12)) 11)
         x2 (bit-shift-right (* ac2 b6) 11)
@@ -164,21 +162,22 @@
 (defn sea-level-pressure [altitude p]
   (/ p (Math/pow (- 1 (/ altitude 44330)) 5.255)))
 
-(defn read-device [{:keys [bmp085
-                           cal
-                           oss
-                           altitude]}]
+(defmethod system/read-device :bmp085
+  [{:keys [bmp085
+           cal
+           oss
+           altitude]}]
   (let [ut (read-ut bmp085)
         up (read-up bmp085 oss)
         t-celsius (cal-temp cal ut)
         uncomp-hPa (cal-pressure cal oss ut up)
         sea-level-hPa (sea-level-pressure altitude uncomp-hPa)]
-        [{:id :bmp085-temperature
-          :current_value t-celsius
-          :units :Celsius}
-         {:id :bmp085-pressure
-          :current_value sea-level-hPa
-          :units :hectopascal}]))
+    [{:id :bmp085-temperature
+      :current_value t-celsius
+      :unit :celsius}
+     {:id :bmp085-pressure
+      :current_value sea-level-hPa
+      :unit :hectopascal}]))
 
 ;; some definitions for testing
 (def i2c-bus-number 1)

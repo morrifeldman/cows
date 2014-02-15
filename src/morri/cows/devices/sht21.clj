@@ -1,7 +1,7 @@
 (ns morri.cows.devices.sht21
   (:require [morri.cows.devices.i2c :as i2c]
-            [morri.cows.conversions :as conv]
-            [morri.cows.binary-utils :as bin]))
+            [morri.cows.binary-utils :as bin]
+            [morri.cows.system :as system]))
 
 ;; Functions for checksum
 (def poly 0x131)
@@ -36,8 +36,9 @@
     ba))
 
 (defn read-14-bit [ba]
-  (bin/msb+lsb (aget ba 0)
-               (bit-and 0xfc (aget ba 1)))) ; mask off the last two lsb
+  (bin/short->ushort
+   (bin/msb+lsb (aget ba 0)
+                (bit-and 0xfc (aget ba 1))))) ; mask off the last two lsb
 
 (defn cal-temp-c [s]
   (+ -46.85 (* 175.72 (/ s 65536.0))))
@@ -53,18 +54,20 @@
 (defn read-sht21-humid [dev]
   (cal-humid (read-14-bit (read-sht21 dev 0xF5 29))))
 
-(defn init [{:keys [i2c-bus address] :as cfg}]
+(defmethod system/init-device :sht21
+  [{:keys [i2c-bus address] :as cfg}]
   (assoc cfg :sht21 (i2c/connect-i2c i2c-bus address)))
 
-(defn read-device [{:keys [sht21]}]
+(defmethod system/read-device :sht21
+  [{:keys [sht21]}]
   (let [t-celsius (read-sht21-temp sht21)
         humid (read-sht21-humid sht21)]
     [{:id :sht21-temperature
       :current_value t-celsius
-      :units :Celsius}
+      :unit :celsius}
      {:id :sht21-humidity
       :current_value humid
-      :units :percent}]))
+      :unit :percent}]))
 
 ;; Some definitions for testing:
 (def i2c-bus-number 1)

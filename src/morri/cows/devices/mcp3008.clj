@@ -1,11 +1,13 @@
 (ns morri.cows.devices.mcp3008
   (:require [clojure.java.io :as io]
-            [morri.cows.binary-utils :as bin])
+            [morri.cows.binary-utils :as bin]
+            [morri.cows.system :as system])
   (:import (com.pi4j.wiringpi Spi))
   (:import (java.nio ByteBuffer)))
 
-;; This is an AD converter so several items can be connected to it.
-;; Currently only the ga1a12s202 is supported
+;; This is a multichannle AD converter so several items can be
+;; connected to it.  Currently only the ga1a12s202 light level meter
+;; is supported
 
 (defn start-spi [channel speed]
   {:post [(not (= % -1))]}
@@ -13,7 +15,8 @@
 
 ;; (start-spi 0 500000)
 
-(defn init [{:keys [speed spi-channel] :as cfg}]
+(defmethod system/init-device :mcp3008
+  [{:keys [speed spi-channel] :as cfg}]
   (assoc cfg :spi (start-spi speed spi-channel)))
 
 (def test-cfg {:name :mcp3008
@@ -70,13 +73,14 @@
                       log-range) raw-range)]
     (Math/pow 10 log-lux)))
 
-(defn read-device [{:keys [spi-channel ad-channels]}]
+(defmethod system/read-device :mcp3008
+  [{:keys [spi-channel ad-channels]}]
   (for [[chan-key {:keys [name] :as chan-cfg}] ad-channels]
     (case name
       :ga1a12s202
       {:id :ga1a12s202-light-level
        :current_value (read-ra1a12s202 spi-channel chan-key)
-       :units :lux})))
+       :unit :lux})))
 
 ;; (init test-cfg)
 ;; (read-device (init test-cfg))
