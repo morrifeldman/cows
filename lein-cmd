@@ -1,2 +1,0 @@
-#! /usr/bin/env sh
-sudo lein with-profile +dev repl :headless :host 10.0.1.3 :port 7575
