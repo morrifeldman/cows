@@ -9,7 +9,9 @@
    [ring.util.response :as ring-resp]
    [ring.adapter.jetty :as jetty]
    [clojurewerkz.machine-head.client :as mh]
-   [clojure.string :as str])
+   [clojurewerkz.machine-head.durability :as durable]
+   [clojure.string :as str]
+   [clj-time.core :as time])
   (:use [hiccup.core]))
 
 (def default-config
@@ -32,6 +34,9 @@
   (for [device-cfg device-cfg-coll
         :when (:active device-cfg)]
     (init-device device-cfg)))
+
+(defn add-timestamp [device-report]
+  (assoc device-report :at (str (time/now))))
 
 (defn add-unit-info
   "Add information about the unit in the right format for xively"
@@ -64,12 +69,13 @@
 
 (defn read-weather
   "Read the weather from all the devices.  The read-device function
-  for each device should accept the map for the device and should
-  return a map with keys :current_value and :unit"
+  for each device should accept the configuration map for the device
+  and should return a map with keys :current_value and :unit"
   [{:keys [devices
            preferred-units
            number-format]}]
   (let [data-fixer (comp
+                    add-timestamp
                     add-unit-info
                     (partial format-current-value number-format)
                     (partial switch-unit preferred-units))]
@@ -79,15 +85,42 @@
                       :when (:active device-cfg)]
                   (read-device device-cfg))))))
 
+(defn connect-xively [{:keys [running?
+                              xively
+                              mqtt-id
+                              mqtt-persister]
+                       :as agent-state}]
+  (when @running?
+    (reset! xively (xively/connect-xively
+                    mqtt-id
+                    mqtt-persister
+                    (System/getenv "XIVELY_API_KEY")))
+    agent-state))
+
 (defn log-weather
-  "Log the weather to Xively"
-  [log-state system-state]
-  (when (:running? log-state)
-    (xively/publish-feed
-     (:xively log-state)
-     (:feed-id log-state)
-     {:version "1.0.0"
-      :datastreams (vec (:current-weather @(:reading-agent system-state)))}))
+  "Log the weather to Xively.  If connect or publish fails back off
+  geometrically starting at 5 secs and doubling the wait time after
+  each failure."
+  [{:keys [running? xively feed-id] :as log-state} current-weather]
+  (loop [next-publish-interval 5000]
+    (when @running?
+      ;; (println "logging @" (time/now))
+      (when-not
+          (try
+            (when-not (mh/connected? @xively)
+              (println "Xively connection lost. Trying to reconnenct.")
+              (connect-xively log-state)
+              (println "Reconnected"))
+            (xively/publish-feed
+             @xively
+             feed-id
+             {:version "1.0.0"
+              :datastreams (vec current-weather)})
+            true                        ;we don't have an error, return true
+            (catch Exception e false))  ;we did have an error, return false
+        (println "Waiting" next-publish-interval "ms for network")
+        (Thread/sleep next-publish-interval)
+        (recur (* 2 next-publish-interval)))))
   log-state)
 
 (defn read-log-weather
@@ -96,13 +129,13 @@
   [{:keys [running?
            read-log-interval] :as weather-state}
    {:keys [logging-agent] :as system-state}]
-  (if running?
-    (do
+  (if @running?
+    (let [current-weather (read-weather weather-state)]
+      (send-off logging-agent log-weather current-weather)
       (send-off *agent* read-log-weather system-state)
-      (send-off logging-agent log-weather system-state)
       (Thread/sleep read-log-interval)
       ;; (println "Reading Weather")
-      (assoc weather-state :current-weather (read-weather weather-state)))
+      (assoc weather-state :current-weather current-weather))
     weather-state))
 
 (defn format-weather
@@ -137,12 +170,12 @@
   (let [config (edn/read-string (slurp config-file))]
     (-> config
         (assoc :reading-agent (agent
-                               {:running? true
+                               {:running? (atom true)
                                 :read-log-interval (:read-log-interval config)
                                 :preferred-units (:preferred-units config)
                                 :number-format (:number-format config)
                                 :devices (init (:device-cfg config))})
-               :logging-agent (agent {:running? (:log-weather? config)
+               :logging-agent (agent {:running? (atom (:log-weather? config))
                                       :feed-id (:feed-id config)})
                :jetty-server (atom {:running? (:serve-weather? config)
                                     :jetty-port (:jetty-port config)
@@ -165,37 +198,36 @@
    (GET "/" [] (weather-handler system-state))))
 
 ;; based on http://stuartsierra.com/2010/01/08/agents-of-swing
+
 (defn start-logging
   "Start the xively agent"
   [{:keys [running?] :as agent-state}]
-  (if running?
-    (assoc agent-state :xively (xively/connect-xively
-                                (System/getenv "XIVELY_API_KEY")))
-    agent-state))
+  (when @running?
+    (send-off *agent* connect-xively)
+    (assoc agent-state
+      :mqtt-id (mh/generate-id)
+      :mqtt-persister (durable/new-memory-persister)
+      :xively (atom nil))))
 
 (defn start-serving
   "Start the jetty server"
   [{:keys [running? jetty-port] :as jetty-server} cow-routes]
   (when running?
-    (assoc jetty-server :jetty-server (jetty/run-jetty cow-routes
-                                                       {:join? false
-                                                        :port jetty-port}))))
+    (assoc jetty-server :jetty-server
+           (jetty/run-jetty cow-routes
+                            {:join? false
+                             :port jetty-port}))))
 
 (defn start-system
   "Start the system up.  Start the jetty server, start the logging and
   reading agents"
  [{:keys [jetty-server
-                            reading-agent
-                            logging-agent] :as system-state}]
+          reading-agent
+          logging-agent] :as system-state}]
   (swap! jetty-server start-serving (make-cow-routes system-state))
   (send-off logging-agent start-logging)
   (send-off reading-agent read-log-weather system-state)
   system-state)
-
-(defn stop-agent-fn
-  "Function for stopping an agent"
-  [state]
-  (assoc state :running? false))
 
 (defn stop-an-agent
   "Stop an agent and display any agent errors"
@@ -206,7 +238,7 @@
     (println "Failed with:")
     (println err)
     (restart-agent ag @ag :clear-actions true))
-  (send-off ag stop-agent-fn))
+  (reset! (:running? @ag) false))
 
 (defn stop-system
   "Stop the system.  Especially the jetty server, which if it isn't
@@ -214,8 +246,10 @@
   [system-state]
   (when-let [jetty-server (:jetty-server @(:jetty-server system-state))]
     (.stop jetty-server))
-  (when-let [xively (:xively @(:logging-agent system-state))]
-             (mh/disconnect xively))
+  (swap! (:jetty-server system-state) #(assoc % :running? false))
+  (when-let [xively @(:xively @(:logging-agent system-state))]
+    (try (mh/disconnect xively)
+         (catch Exception e (println e))))
   (doseq [agent-key [:logging-agent :reading-agent]]
     (stop-an-agent (agent-key system-state)))
   system-state)

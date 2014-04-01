@@ -1,6 +1,6 @@
 {:log-weather? true
- :feed-id 2070333582
- :read-log-interval 5000    ;ms
+ :feed-id 2070333582 ; put API Key in the environmental variable XIVELY_API_KEY
+ :read-log-interval 5000    ; in ms
  :serve-weather? true
  :jetty-port 80
  :preferred-units #{:fahrenheit :hectopascal}

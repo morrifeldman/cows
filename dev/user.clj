@@ -56,3 +56,9 @@
   (refresh :after 'user/go))
 
 ;; (reset)
+
+;; (stop)
+;; (refresh)
+;; (go)
+
+;; (pprint system-state)

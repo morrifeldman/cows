@@ -3,12 +3,15 @@
             [clojure.data.json :as json]
             [clojurewerkz.machine-head.durability :as durable]))
 
-(defn connect-xively [api-key]
-  (mh/connect
-   "tcp://api.xively.com:1883"
-   (mh/generate-id)
-   (durable/new-memory-persister)
-   {:username api-key}))
+(defn connect-xively
+  ([api-key]
+     (connect-xively (mh/generate-id) (durable/new-memory-persister)))
+  ([id persister api-key]
+     (mh/connect
+      "tcp://api.xively.com:1883"
+      id
+      persister
+      {:username api-key})))
 
 (defn publish-feed [conn feed data]
   (let [topic (format "/v2/feeds/%s.json" feed)]
@@ -32,6 +35,7 @@
                           :label "Celsius"}})
 
 ;; (def conn (connect-xively xively-api-key))
+;; (mh/connected? conn)
 ;; (publish-feed conn xively-feed payload)
 ;; (mh/publish conn test-datastream-topic (json/write-str test-payload) 0)
 ;
